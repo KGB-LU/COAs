@@ -1,0 +1,52 @@
+name: Build thumbnails
+
+on:
+  push:
+    paths:
+      - "docs/**"
+      - ".github/workflows/thumbnails.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  thumbs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils imagemagick webp
+
+      - name: Build thumbnails
+        run: |
+          mkdir -p thumbs
+          for f in docs/*; do
+            [ -f "$f" ] || continue
+            b=$(basename "$f")
+            out="thumbs/$b.webp"
+            [ -f "$out" ] && continue
+            lc=$(echo "$b" | tr 'A-Z' 'a-z')
+            case "$lc" in
+              *.pdf)
+                pdftoppm -f 1 -l 1 -r 60 -png -singlefile "$f" /tmp/pdfthumb || continue
+                convert /tmp/pdfthumb.png -background white -alpha remove -resize '360x>' -quality 70 "$out" || true
+                ;;
+              *.jpg|*.jpeg|*.png|*.webp|*.gif)
+                convert "$f[0]" -auto-orient -resize '360x>' -quality 70 "$out" || true
+                ;;
+            esac
+          done
+
+      - name: Commit thumbnails
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add thumbs
+          if git diff --cached --quiet; then
+            echo "No new thumbnails"
+          else
+            git commit -m "Update thumbnails"
+            git push
+          fi
