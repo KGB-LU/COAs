@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>COA Library</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 850px; margin: 2rem auto; padding: 0 1rem; color: #1f2328; }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    #search { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid #d0d7de; border-radius: 6px; box-sizing: border-box; margin-bottom: 1rem; }
+    #status { font-size: 0.9rem; color: #656d76; margin-bottom: 0.75rem; }
+    ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid #d0d7de; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; border-bottom: 1px solid #d0d7de; }
+    a { text-decoration: none; color: #0969da; font-weight: 500; word-break: break-all; }
+    a:hover { text-decoration: underline; }
+    .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: #eff1f3; color: #57606a; margin-left: 10px; flex-shrink: 0; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>COA Library</h1>
+  <input type="text" id="search" placeholder="Search by filename (e.g., RT30.26.11)..." autofocus />
+  <div id="status">Loading files...</div>
+  <ul id="file-list"></ul>
+
+  <script>
+    // --- CONFIGURATION ---
+    var ORG_NAME = "KGB-LU";
+    var REPO_NAME = "COAs";
+    var BRANCH = "main";
+    var FOLDER_PREFIX = "docs/"; // Use "" if files are in the repo root
+    // ---------------------
+
+    var listEl = document.getElementById("file-list");
+    var statusEl = document.getElementById("status");
+    var searchEl = document.getElementById("search");
+    var allFiles = [];
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function encodePath(p) {
+      return p.split("/").map(encodeURIComponent).join("/");
+    }
+
+    async function loadFiles() {
+      try {
+        var res = await fetch("https://api.github.com/repos/" + ORG_NAME + "/" + REPO_NAME + "/git/trees/" + BRANCH + "?recursive=1");
+        if (!res.ok) { throw new Error("HTTP " + res.status); }
+        var data = await res.json();
+        allFiles = (data.tree || [])
+          .filter(function (item) { return item.type === "blob" && item.path.indexOf(FOLDER_PREFIX) === 0 && !item.path.endsWith(".gitkeep"); })
+          .map(function (item) {
+            return { name: item.path.slice(FOLDER_PREFIX.length), url: item.path, ext: item.path.split(".").pop() };
+          })
+          .sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true }); });
+        render(allFiles);
+      } catch (err) {
+        statusEl.textContent = "Could not load the file list (" + err.message + "). Please wait a minute and refresh.";
+      }
+    }
+
+    function render(files) {
+      statusEl.textContent = "Showing " + files.length + " of " + allFiles.length + " files";
+      listEl.innerHTML = files.map(function (f) {
+        return '<li><a href="' + esc(encodePath(f.url)) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a><span class="badge">' + esc(f.ext) + '</span></li>';
+      }).join("");
+    }
+
+    searchEl.addEventListener("input", function () {
+      var terms = searchEl.value.toLowerCase().trim().split(/\s+/);
+      render(allFiles.filter(function (f) {
+        return terms.every(function (t) { return f.name.toLowerCase().indexOf(t) !== -1; });
+      }));
+    });
+
+    loadFiles();
+  </script>
+</body>
+</html>
